@@ -1,5 +1,6 @@
 #include <game/host.hpp>
 
+#include <game/concepts.hpp>
 #include <game/rules.hpp>
 
 #include <algorithm>
@@ -84,10 +85,17 @@ std::optional<Team> Host::maybeFinish(GameOutcome& outcome) {
 }
 
 GameOutcome Host::run() {
+    assertRoleConcepts();
+
     GameOutcome outcome;
     std::mt19937 dealRng(config_.seed);
     state_ = createGameState(config_, defaultSpecialRoles(), dealRng);
     outcome.state = state_;
+
+    FileLogger fileLog;
+    fileLog.beginGame(config_);
+    logger_.setFileLogger(fileLog.enabled() ? &fileLog : nullptr);
+    outcome.logDirectory = fileLog.directory();
 
     auto botBrain = smart::makeShared<BotBrain>();
     smart::SharedPtr<Brain> humanBrain =
@@ -99,6 +107,9 @@ GameOutcome Host::run() {
     }
     engine_->start(players_);
 
+    // До первого раунда — общие сведения пишем в round_00, если логи включены.
+    if (fileLog.enabled()) fileLog.beginRound(0);
+
     logger_.info("=== Мафия ===");
     logger_.info("seed=" + std::to_string(config_.seed) + ", игроков=" +
                  std::to_string(config_.players) + ", мафии=" +
@@ -107,6 +118,9 @@ GameOutcome Host::run() {
                  std::string(config_.openAnnouncements ? "открытые" : "закрытые") +
                  ", engine=" + engineName(config_.engine) +
                  (config_.interactive ? ", режим=интерактивный (вы — Игрок1)" : ""));
+    if (fileLog.enabled()) {
+        logger_.info("Файловые логи: " + fileLog.directory().string());
+    }
     if (config_.fullLog) {
         logger_.detail("Полный лог: все голоса, ночные ходы, проверки, доверие.");
     }
@@ -131,15 +145,23 @@ GameOutcome Host::run() {
         }
     }
 
-    if (auto w = maybeFinish(outcome)) {
+    auto finish = [&](GameOutcome& out) {
+        fileLog.writeSummary(out, state_->snapshot());
+        out.logDirectory = fileLog.directory();
+        logger_.setFileLogger(nullptr);
         engine_->stop();
-        return outcome;
+        return out;
+    };
+
+    if (auto w = maybeFinish(outcome)) {
+        return finish(outcome);
     }
 
     for (int day = 1; day <= kMaxDays; ++day) {
         state_->setDay(day);
         state_->setPhase(Phase::Day);
         outcome.daysPlayed = day;
+        fileLog.beginRound(day);
 
         for (auto& p : players_) p->setLastAccused(kNoPlayer);
 
@@ -149,10 +171,10 @@ GameOutcome Host::run() {
         dayStart.message = "--- День " + std::to_string(day) + " ---";
         broadcast(dayStart);
 
-        // Дневное обсуждение.
+        // Дневное обсуждение (через концепт PlayerLike).
         for (auto& p : players_) {
             if (!p->alive()) continue;
-            Statement s = engine_->askSpeak(*p, buildView(*p));
+            Statement s = runDaySpeak(*engine_, *p, buildView(*p));
             s.speaker = p->id();
             p->setLastAccused(s.about);
 
@@ -168,12 +190,12 @@ GameOutcome Host::run() {
                            std::to_string(p->trustOf(s.about)));
         }
 
-        // Голосование.
+        // Голосование (через концепт PlayerLike).
         logger_.info("Голосование:");
         std::vector<Vote> votes;
         for (auto& p : players_) {
             if (!p->alive()) continue;
-            PlayerId target = engine_->askVote(*p, buildView(*p));
+            PlayerId target = runDayVote(*engine_, *p, buildView(*p));
             if (target == p->id() || target == kNoPlayer || !state_->isAlive(target)) {
                 auto alive = state_->aliveIds();
                 std::erase(alive, p->id());
@@ -219,8 +241,7 @@ GameOutcome Host::run() {
         }
 
         if (maybeFinish(outcome)) {
-            engine_->stop();
-            return outcome;
+            return finish(outcome);
         }
 
         // Ночь.
@@ -236,7 +257,8 @@ GameOutcome Host::run() {
             if (!p->alive()) continue;
             if (p->role() == Role::Mafia && boss == kNoPlayer) boss = p->id();
 
-            PlayerNightDecision d = engine_->askAct(*p, buildView(*p));
+            // Ночной ход через концепт NightActor.
+            PlayerNightDecision d = runNightTurn(*engine_, *p, buildView(*p));
             std::string targetName =
                 d.target == kNoPlayer ? "—" : state_->name(d.target);
             logger_.detail(p->name() + " (" + roleName(p->role()) + "): " +
@@ -356,8 +378,7 @@ GameOutcome Host::run() {
         for (auto& p : players_) p->onEvent(nightEv);
 
         if (maybeFinish(outcome)) {
-            engine_->stop();
-            return outcome;
+            return finish(outcome);
         }
     }
 
@@ -369,8 +390,7 @@ GameOutcome Host::run() {
     outcome.finished = true;
     outcome.daysPlayed = state_->day();
     state_->setPhase(Phase::Finished);
-    engine_->stop();
-    return outcome;
+    return finish(outcome);
 }
 
 }  // namespace mafia

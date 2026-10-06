@@ -78,11 +78,13 @@ public:
 class Commissar final : public Player {
 public:
     using Player::Player;
+    static constexpr bool kIsInvestigator = true;
 };
 
 class Doctor final : public Player {
 public:
     using Player::Player;
+    static constexpr bool kIsHealer = true;
 };
 
 class Maniac final : public Player {

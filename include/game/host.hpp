@@ -2,6 +2,7 @@
 
 #include <smart/shared_ptr.hpp>
 
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "brain.hpp"
 #include "config.hpp"
 #include "engine.hpp"
+#include "file_logger.hpp"
 #include "logger.hpp"
 #include "player.hpp"
 #include "state.hpp"
@@ -22,6 +24,7 @@ struct GameOutcome {
     bool doctorTriedSameHealTwice = false;
     bool finished = false;
     smart::SharedPtr<GameState> state;
+    std::filesystem::path logDirectory;  // пусто, если файловые логи выключены
 };
 
 // Ведущий: точка синхронизации, цикл дня/ночи, объявления, проверка победы.

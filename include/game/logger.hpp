@@ -9,11 +9,16 @@
 
 namespace mafia {
 
+class FileLogger;
+
 // Вывод игры: краткий (события) и полный (--full-log).
 // Формулировки объявлений зависят от open/closed announcements.
+// При наличии FileLogger строки дублируются в файлы раундов.
 class Logger {
 public:
     explicit Logger(const Config& config, std::ostream& out = std::cout);
+
+    void setFileLogger(FileLogger* fileLogger) { fileLogger_ = fileLogger; }
 
     void info(const std::string& message);
     void detail(const std::string& message);  // только при --full-log
@@ -23,7 +28,6 @@ public:
     bool openAnnouncements() const { return openAnnouncements_; }
 
     // Публичное описание выбывшего: роль (open) или только сторона (closed).
-    // Для Маньяка в закрытом режиме показываем "мирные" (как лагерь, не мафия).
     std::string announcePlayer(const std::string& name, Role role) const;
 
     // Причина смерти для публики: в closed ночные детали скрыты.
@@ -35,6 +39,7 @@ private:
     bool fullLog_ = false;
     bool openAnnouncements_ = false;
     std::ostream& out_;
+    FileLogger* fileLogger_ = nullptr;
 };
 
 }  // namespace mafia

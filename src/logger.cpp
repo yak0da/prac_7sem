@@ -1,14 +1,22 @@
 #include <game/logger.hpp>
 
+#include <game/file_logger.hpp>
+
 namespace mafia {
 
 Logger::Logger(const Config& config, std::ostream& out)
     : fullLog_(config.fullLog), openAnnouncements_(config.openAnnouncements), out_(out) {}
 
-void Logger::info(const std::string& message) { out_ << message << "\n"; }
+void Logger::info(const std::string& message) {
+    out_ << message << "\n";
+    if (fileLogger_) fileLogger_->line(message);
+}
 
 void Logger::detail(const std::string& message) {
-    if (fullLog_) out_ << "  [лог] " << message << "\n";
+    if (!fullLog_) return;
+    const std::string line = "  [лог] " + message;
+    out_ << line << "\n";
+    if (fileLogger_) fileLogger_->line(line);
 }
 
 void Logger::event(const GameEvent& event) {
@@ -17,7 +25,6 @@ void Logger::event(const GameEvent& event) {
 
 std::string Logger::announcePlayer(const std::string& name, Role role) const {
     if (openAnnouncements_) return name + " (" + roleName(role) + ")";
-    // Закрытые объявления: только мирные / мафия. Маньяк не раскрывается как особый статус.
     const Team publicTeam = (teamOf(role) == Team::Mafia) ? Team::Mafia : Team::Town;
     return name + " [" + teamName(publicTeam) + "]";
 }
@@ -25,7 +32,6 @@ std::string Logger::announcePlayer(const std::string& name, Role role) const {
 std::string Logger::announceCause(const std::string& internalCause) const {
     if (openAnnouncements_) return internalCause;
     if (internalCause == "казнён") return "казнён";
-    // Обстоятельства ночного убийства и кем убит — в секрете.
     return "убит ночью";
 }
 
