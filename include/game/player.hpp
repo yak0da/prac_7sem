@@ -41,6 +41,9 @@ public:
     void setPreviousHeal(PlayerId id) { previousHeal_ = id; }
     PlayerId previousHeal() const { return previousHeal_; }
 
+    void setLastAccused(PlayerId id) { lastAccused_ = id; }
+    PlayerId lastAccused() const { return lastAccused_; }
+
     virtual PlayerNightDecision act(const GameView& view);
     virtual PlayerId vote(const GameView& view);
     virtual Statement speak(const GameView& view);
@@ -51,6 +54,7 @@ protected:
     std::map<PlayerId, int> trust_;
     std::map<PlayerId, Team> checks_;
     PlayerId previousHeal_ = kNoPlayer;
+    PlayerId lastAccused_ = kNoPlayer;
 
 private:
     PlayerId id_;

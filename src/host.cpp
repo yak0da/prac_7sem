@@ -22,6 +22,7 @@ GameView Host::buildView(const Player& player) const {
     view.checks = player.checks();
     view.trust = player.trustMap();
     view.previousHeal = player.previousHeal();
+    view.lastAccused = player.lastAccused();
 
     for (const auto& info : state_->snapshot()) {
         view.players.push_back({info.id, info.name, info.alive});
@@ -39,7 +40,7 @@ void Host::broadcast(const GameEvent& event) {
     }
 }
 
-void Host::applyDeath(PlayerId id, int day, const std::string& cause, Role role, bool announceRole) {
+void Host::applyDeath(PlayerId id, int day, const std::string& cause, Role role, bool /*announceRole*/) {
     state_->kill(id, day, cause);
     for (auto& p : players_) {
         if (p->id() == id) p->setAlive(false);
@@ -51,16 +52,11 @@ void Host::applyDeath(PlayerId id, int day, const std::string& cause, Role role,
     event.target = id;
     event.role = role;
     event.team = teamOf(role);
-    event.openInfo = announceRole || config_.openAnnouncements;
+    event.openInfo = config_.openAnnouncements;
 
     std::ostringstream msg;
-    msg << "Выбывает " << state_->name(id);
-    if (config_.openAnnouncements) {
-        msg << " (" << roleName(role) << ")";
-    } else {
-        msg << " [" << teamName(teamOf(role)) << "]";
-    }
-    msg << " — " << cause;
+    msg << "Выбывает " << logger_.announcePlayer(state_->name(id), role) << " — "
+        << logger_.announceCause(cause);
     event.message = msg.str();
     broadcast(event);
 }
@@ -92,8 +88,6 @@ GameOutcome Host::run() {
     auto brain = smart::makeShared<BotBrain>();
     players_.clear();
     for (const auto& info : state_->snapshot()) {
-        // В интерактивном режиме на шаге 5 человек пока тоже играет ботом
-        // (HumanBrain появится на шаге 8).
         players_.push_back(makePlayer(info, brain, config_.seed));
     }
 
@@ -101,8 +95,12 @@ GameOutcome Host::run() {
     logger_.info("seed=" + std::to_string(config_.seed) + ", игроков=" +
                  std::to_string(config_.players) + ", мафии=" +
                  std::to_string(mafiaCount(config_.players, config_.mafiaDivisor)) +
+                 ", объявления=" +
+                 std::string(config_.openAnnouncements ? "открытые" : "закрытые") +
                  ", engine=" + engineName(config_.engine));
-    logger_.detail("Роли скрыты от игроков; полный лог включён.");
+    if (config_.fullLog) {
+        logger_.detail("Полный лог: все голоса, ночные ходы, проверки, доверие.");
+    }
 
     if (auto w = maybeFinish(outcome)) return outcome;
 
@@ -111,6 +109,8 @@ GameOutcome Host::run() {
         state_->setPhase(Phase::Day);
         outcome.daysPlayed = day;
 
+        for (auto& p : players_) p->setLastAccused(kNoPlayer);
+
         GameEvent dayStart;
         dayStart.kind = EventKind::DayStart;
         dayStart.day = day;
@@ -118,12 +118,11 @@ GameOutcome Host::run() {
         broadcast(dayStart);
 
         // Дневное обсуждение.
-        std::vector<Statement> statements;
         for (auto& p : players_) {
             if (!p->alive()) continue;
             Statement s = engine_->askSpeak(*p, buildView(*p));
             s.speaker = p->id();
-            statements.push_back(s);
+            p->setLastAccused(s.about);
 
             GameEvent ev;
             ev.kind = EventKind::StatementMade;
@@ -133,15 +132,16 @@ GameOutcome Host::run() {
             ev.team = s.claim;
             ev.message = s.text;
             broadcast(ev);
-            logger_.detail(p->name() + " доверие к цели " + std::to_string(p->trustOf(s.about)));
+            logger_.detail(p->name() + " доверие к " + state_->name(s.about) + " = " +
+                           std::to_string(p->trustOf(s.about)));
         }
 
         // Голосование.
+        logger_.info("Голосование:");
         std::vector<Vote> votes;
         for (auto& p : players_) {
             if (!p->alive()) continue;
             PlayerId target = engine_->askVote(*p, buildView(*p));
-            // Нельзя голосовать за мёртвого или за себя - подправляем.
             if (target == p->id() || target == kNoPlayer || !state_->isAlive(target)) {
                 auto alive = state_->aliveIds();
                 std::erase(alive, p->id());
@@ -149,7 +149,8 @@ GameOutcome Host::run() {
             }
             if (target == kNoPlayer) continue;
             votes.push_back({p->id(), target});
-            logger_.detail(p->name() + " голосует против " + state_->name(target));
+            // В кратком логе — кто за кого; подробности доверия только в full-log.
+            logger_.info("  " + p->name() + " → " + state_->name(target));
         }
 
         auto executed = countVotes(votes);
@@ -159,9 +160,9 @@ GameOutcome Host::run() {
             tally.day = day;
             if (executed) {
                 tally.target = *executed;
-                tally.message = "Голосование: большинство против " + state_->name(*executed);
+                tally.message = "Итог голосования: большинство против " + state_->name(*executed);
             } else {
-                tally.message = "Голосование: ничья — никто не выбывает.";
+                tally.message = "Итог голосования: ничья — никто не выбывает.";
             }
             broadcast(tally);
         }
@@ -170,14 +171,12 @@ GameOutcome Host::run() {
             Role role = state_->player(*executed).role;
             applyDeath(*executed, day, "казнён", role, true);
 
-            // Корректировка доверия: голосовал против мафии — плюс, против мирного — минус.
             for (const Vote& v : votes) {
                 if (v.target != *executed) continue;
                 for (auto& p : players_) {
                     if (p->id() != v.voter || !p->alive()) continue;
                     if (teamOf(role) == Team::Mafia) p->addTrust(v.target, +5);
                     else p->addTrust(v.target, -8);
-                    // Другие видят, что voter голосовал "правильно/неправильно" - упрощённо:
                     for (auto& other : players_) {
                         if (!other->alive() || other->id() == v.voter) continue;
                         if (teamOf(role) == Team::Mafia) other->addTrust(v.voter, +4);
@@ -195,7 +194,7 @@ GameOutcome Host::run() {
 
         NightActions actions;
         actions.previousDoctorHeal = previousDoctorHeal_;
-        std::map<PlayerId, PlayerId> mafiaProposals;  // мафиози -> предложенная жертва
+        std::map<PlayerId, PlayerId> mafiaProposals;
         PlayerId boss = kNoPlayer;
 
         for (auto& p : players_) {
@@ -203,9 +202,10 @@ GameOutcome Host::run() {
             if (p->role() == Role::Mafia && boss == kNoPlayer) boss = p->id();
 
             PlayerNightDecision d = engine_->askAct(*p, buildView(*p));
-            logger_.detail(p->name() + " (" + roleName(p->role()) + ") ночной ход kind=" +
-                           std::to_string(static_cast<int>(d.kind)) + " target=" +
-                           std::to_string(d.target));
+            std::string targetName =
+                d.target == kNoPlayer ? "—" : state_->name(d.target);
+            logger_.detail(p->name() + " (" + roleName(p->role()) + "): " +
+                           Logger::nightKindName(d.kind) + " → " + targetName);
 
             switch (p->role()) {
                 case Role::Doctor:
@@ -233,7 +233,6 @@ GameOutcome Host::run() {
             }
         }
 
-        // Решение мафии: пока Босс жив — его предложение; иначе большинство.
         if (!mafiaProposals.empty()) {
             PlayerId chosen = mafiaProposals.begin()->second;
             if (boss != kNoPlayer && mafiaProposals.contains(boss)) {
@@ -246,27 +245,53 @@ GameOutcome Host::run() {
             }
             actions.mafiaTarget = chosen;
             logger_.detail("Мафия целится в " + state_->name(chosen) +
-                           (boss != kNoPlayer ? " (через Босса)" : ""));
+                           (boss != kNoPlayer && state_->isAlive(boss) ? " (решение Босса)" : " (большинство)"));
         }
 
         NightResult night = resolveNight(state_->snapshot(), actions);
         if (night.healRejected) outcome.doctorTriedSameHealTwice = true;
 
+        PlayerId rememberedHeal = kNoPlayer;
         if (night.healed != kNoPlayer) {
-            previousDoctorHeal_ = night.healed;
-            for (auto& p : players_) {
-                if (p->role() == Role::Doctor) p->setPreviousHeal(night.healed);
-            }
+            rememberedHeal = night.healed;
             logger_.detail("Доктор лечил " + state_->name(night.healed));
             if (config_.openAnnouncements) {
-                logger_.info("Доктор спас этой ночью: " + state_->name(night.healed));
+                if (!night.savedTargets.empty()) {
+                    logger_.info("Утром: Доктор этой ночью спасал " + state_->name(night.healed) + ".");
+                } else {
+                    logger_.info("Утром: Доктор этой ночью лечил " + state_->name(night.healed) +
+                                 " (покушений на него не было).");
+                }
             }
         } else if (actions.doctorHeal != kNoPlayer && !night.healRejected) {
-            // Лечил, но в него не стреляли - всё равно запоминаем цель.
-            previousDoctorHeal_ = actions.doctorHeal;
-            for (auto& p : players_) {
-                if (p->role() == Role::Doctor) p->setPreviousHeal(actions.doctorHeal);
+            rememberedHeal = actions.doctorHeal;
+            logger_.detail("Доктор лечил " + state_->name(actions.doctorHeal));
+            if (config_.openAnnouncements) {
+                logger_.info("Утром: Доктор этой ночью лечил " + state_->name(actions.doctorHeal) +
+                             " (покушений на него не было).");
             }
+        } else if (night.healRejected) {
+            logger_.detail("Доктор пытался снова лечить того же — ход отклонён.");
+        }
+
+        if (rememberedHeal != kNoPlayer) {
+            previousDoctorHeal_ = rememberedHeal;
+            for (auto& p : players_) {
+                if (p->role() == Role::Doctor) p->setPreviousHeal(rememberedHeal);
+            }
+        }
+
+        // В закрытом режиме не объясняем, почему ночь прошла без жертв.
+        if (night.deaths.empty()) {
+            if (config_.openAnnouncements) {
+                logger_.info("Утром: этой ночью никто не погиб.");
+            } else {
+                logger_.info("Утро. Жертв нет.");
+            }
+        } else if (config_.openAnnouncements) {
+            logger_.info("Утро. Итоги ночи:");
+        } else {
+            logger_.info("Утро. Обнаружены жертвы:");
         }
 
         if (night.commissarChecked != kNoPlayer && night.commissarSeenTeam) {
@@ -279,9 +304,6 @@ GameOutcome Host::run() {
             }
         }
 
-        if (night.deaths.empty()) {
-            logger_.info("Ночь прошла без жертв.");
-        }
         for (const DeathRecord& death : night.deaths) {
             Role role = state_->player(death.victim).role;
             applyDeath(death.victim, day, death.cause, role, config_.openAnnouncements);
@@ -290,13 +312,11 @@ GameOutcome Host::run() {
         GameEvent nightEv;
         nightEv.kind = EventKind::NightResolved;
         nightEv.day = day;
-        nightEv.message = "";
         for (auto& p : players_) p->onEvent(nightEv);
 
         if (maybeFinish(outcome)) return outcome;
     }
 
-    // Защита от бесконечной игры: объявляем победу по текущему перевесу.
     logger_.info("Достигнут лимит дней — досрочный итог.");
     auto counts = countAliveByTeam(state_->snapshot());
     if (counts.mafia >= counts.town + counts.maniac) outcome.winner = Team::Mafia;

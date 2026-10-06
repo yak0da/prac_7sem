@@ -28,7 +28,7 @@ $(BUILD)/%.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
-test: $(BUILD)/mafia_tests
+test: $(BUILD)/mafia_tests $(BUILD)/mafia
 	./$(BUILD)/mafia_tests
 
 run: $(BUILD)/mafia

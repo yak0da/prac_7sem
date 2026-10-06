@@ -59,7 +59,7 @@ Statement BotBrain::speak(const GameView& view, std::mt19937& rng) {
     if (list.empty()) {
         s.about = view.self;
         s.claim = Team::Town;
-        s.text = nameOf(view, view.self) + ": я не мафия";
+        s.text = nameOf(view, view.self) + " говорит: «я не мафия»";
         return s;
     }
 
@@ -102,8 +102,8 @@ Statement BotBrain::speak(const GameView& view, std::mt19937& rng) {
     }
 
     std::ostringstream text;
-    text << nameOf(view, view.self) << ": " << nameOf(view, s.about) << " — "
-         << (s.claim == Team::Mafia ? "мафия" : "мирный");
+    text << nameOf(view, view.self) << " говорит: «" << nameOf(view, s.about) << " — "
+         << (s.claim == Team::Mafia ? "мафия" : "мирный") << "»";
     s.text = text.str();
     return s;
 }
@@ -115,6 +115,15 @@ PlayerId BotBrain::vote(const GameView& view, std::mt19937& rng) {
             if (team != Team::Mafia) continue;
             for (const auto& p : view.players) {
                 if (p.id == id && p.alive && id != view.self) return id;
+            }
+        }
+    }
+
+    // Голосуем за того, кого только что обвинили в обсуждении (если цель ещё жива и не союзник).
+    if (view.lastAccused != kNoPlayer && view.lastAccused != view.self) {
+        for (const auto& p : view.players) {
+            if (p.id == view.lastAccused && p.alive && !isAlly(view, p.id)) {
+                return view.lastAccused;
             }
         }
     }

@@ -26,6 +26,7 @@ struct GameView {
     std::map<PlayerId, Team> checks;         // для Комиссара - результаты проверок
     std::map<PlayerId, int> trust;           // своё доверие к другим (-100..100)
     PlayerId previousHeal = kNoPlayer;       // для Доктора
+    PlayerId lastAccused = kNoPlayer;        // кого обвинил в обсуждении сегодня
 };
 
 // Высказывание днём: "Игрок X - мафия/мирный".
