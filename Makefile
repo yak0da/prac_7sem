@@ -5,7 +5,7 @@ SANFLAGS ?=
 
 CXXFLAGS := -std=c++20 -Wall -Wextra -pedantic $(OPT) $(SANFLAGS) -Iinclude -Ithird_party -pthread -MMD -MP
 LDFLAGS  := -pthread $(SANFLAGS)
-LDLIBS   := -lcurl
+LDLIBS   :=
 
 LIB_SRC  := $(filter-out src/main.cpp,$(wildcard src/*.cpp))
 TEST_SRC := $(wildcard tests/*.cpp)

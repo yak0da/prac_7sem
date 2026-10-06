@@ -19,7 +19,6 @@ public:
 struct RolesFile {
     int mafiaDivisor = -1;          // -1 = не задан, оставить значение из CLI
     std::vector<Role> roles;        // особые роли (комиссар, доктор, ниндзя, ...)
-    std::vector<std::string> characters;  // характеры для AI-игроков
 };
 
 // Разбирает простой YAML: скаляры и список roles с "- item".
@@ -30,8 +29,5 @@ RolesFile loadRolesYamlFile(const std::string& path);
 
 // Роли для раздачи: из YAML или defaultSpecialRoles(), плюс применяет mafia_divisor к Config.
 std::vector<Role> specialRolesFor(Config& config);
-
-// Характеры для AI-игроков из YAML (пустой список, если файла нет).
-std::vector<std::string> charactersFor(const Config& config);
 
 }  // namespace mafia

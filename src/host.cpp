@@ -1,12 +1,10 @@
 #include <game/host.hpp>
 
-#include <game/ai_brain.hpp>
 #include <game/concepts.hpp>
 #include <game/rules.hpp>
 #include <game/yaml_lite.hpp>
 
 #include <algorithm>
-#include <filesystem>
 #include <map>
 #include <random>
 #include <ranges>
@@ -31,7 +29,6 @@ GameView Host::buildView(const Player& player) const {
     view.trust = player.trustMap();
     view.previousHeal = player.previousHeal();
     view.lastAccused = player.lastAccused();
-    view.history = publicHistory_;
 
     for (const auto& info : state_->snapshot()) {
         view.players.push_back({info.id, info.name, info.alive});
@@ -44,7 +41,6 @@ GameView Host::buildView(const Player& player) const {
 
 void Host::broadcast(const GameEvent& event) {
     logger_.event(event);
-    if (!event.message.empty()) publicHistory_.push_back(event.message);
     for (auto& p : players_) {
         if (p->alive() || event.kind == EventKind::GameEnded) p->onEvent(event);
     }
@@ -106,30 +102,9 @@ GameOutcome Host::run() {
     auto botBrain = smart::makeShared<BotBrain>();
     smart::SharedPtr<Brain> humanBrain =
         humanBrainOverride_ ? humanBrainOverride_ : smart::makeShared<HumanBrain>();
-
-    aiBudget_ = std::make_shared<AiBudget>(10);
-    aiTranscript_ = std::make_shared<AiTranscript>();
-    std::shared_ptr<AiClient> aiClient = aiClientOverride_;
-    if (!aiClient && config_.aiPlayers > 0) {
-        aiClient = std::make_shared<CurlAiClient>(AiSettings::fromEnv());
-    }
-    const auto characters = charactersFor(config_);
-    int aiSlots = config_.aiPlayers;
-
     players_.clear();
     for (const auto& info : state_->snapshot()) {
-        smart::SharedPtr<Brain> brain = botBrain;
-        if (config_.interactive && info.human) {
-            brain = humanBrain;
-        } else if (aiSlots > 0 && aiClient) {
-            std::string character = "осторожный игрок";
-            if (!characters.empty()) {
-                character = characters[static_cast<std::size_t>((info.id - 1) % characters.size())];
-            }
-            brain = smart::makeShared<AiBrain>(aiClient, aiBudget_, aiTranscript_, character);
-            --aiSlots;
-            logger_.detail(info.name + " управляется AI («" + character + "»)");
-        }
+        auto brain = (config_.interactive && info.human) ? humanBrain : botBrain;
         players_.push_back(makePlayer(info, brain, config_.seed));
     }
     engine_->start(players_);
@@ -144,13 +119,9 @@ GameOutcome Host::run() {
                  ", объявления=" +
                  std::string(config_.openAnnouncements ? "открытые" : "закрытые") +
                  ", engine=" + engineName(config_.engine) +
-                 (config_.interactive ? ", режим=интерактивный (вы — Игрок1)" : "") +
-                 (config_.aiPlayers > 0 ? ", ai=" + std::to_string(config_.aiPlayers) : ""));
+                 (config_.interactive ? ", режим=интерактивный (вы — Игрок1)" : ""));
     if (fileLog.enabled()) {
         logger_.info("Файловые логи: " + fileLog.directory().string());
-    }
-    if (config_.aiPlayers > 0 && !AiSettings::fromEnv().configured() && !aiClientOverride_) {
-        logger_.info("AI: ключ MAFIA_AI_KEY не задан — ходы через запасной BotBrain.");
     }
     if (config_.fullLog) {
         logger_.detail("Полный лог: все голоса, ночные ходы, проверки, доверие.");
@@ -179,15 +150,6 @@ GameOutcome Host::run() {
     auto finish = [&](GameOutcome& out) {
         fileLog.writeSummary(out, state_->snapshot());
         out.logDirectory = fileLog.directory();
-        if (aiTranscript_ && !aiTranscript_->lines().empty()) {
-            std::filesystem::path path =
-                fileLog.enabled() ? fileLog.directory() / "ai_dialogs.jsonl"
-                                  : std::filesystem::path("logs") / "ai_dialogs.jsonl";
-            if (!fileLog.enabled()) std::filesystem::create_directories(path.parent_path());
-            aiTranscript_->writeToFile(path.string());
-            out.aiTranscriptPath = path;
-            logger_.info("Диалоги AI: " + path.string());
-        }
         logger_.setFileLogger(nullptr);
         engine_->stop();
         return out;
@@ -202,7 +164,6 @@ GameOutcome Host::run() {
         state_->setPhase(Phase::Day);
         outcome.daysPlayed = day;
         fileLog.beginRound(day);
-        if (aiBudget_) aiBudget_->resetRound();
 
         for (auto& p : players_) p->setLastAccused(kNoPlayer);
 

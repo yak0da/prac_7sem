@@ -27,7 +27,6 @@ struct GameView {
     std::map<PlayerId, int> trust;           // своё доверие к другим (-100..100)
     PlayerId previousHeal = kNoPlayer;       // для Доктора
     PlayerId lastAccused = kNoPlayer;        // кого обвинил в обсуждении сегодня
-    std::vector<std::string> history;        // публичные события для AI-промпта
 };
 
 // Высказывание днём: "Игрок X - мафия/мирный".

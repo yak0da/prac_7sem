@@ -24,21 +24,11 @@ std::string stripComment(std::string_view line) {
     return std::string(line.substr(0, hash));
 }
 
-std::string unquote(std::string s) {
-    if (s.size() >= 2 && ((s.front() == '"' && s.back() == '"') ||
-                          (s.front() == '\'' && s.back() == '\''))) {
-        return s.substr(1, s.size() - 2);
-    }
-    return s;
-}
-
-enum class ListKind { None, Roles, Characters };
-
 }  // namespace
 
 RolesFile parseRolesYaml(const std::string& text) {
     RolesFile result;
-    ListKind list = ListKind::None;
+    bool inRoles = false;
     std::istringstream in(text);
     std::string raw;
     int lineNo = 0;
@@ -48,33 +38,25 @@ RolesFile parseRolesYaml(const std::string& text) {
         if (line.empty()) continue;
 
         if (line == "roles:") {
-            list = ListKind::Roles;
-            continue;
-        }
-        if (line == "characters:") {
-            list = ListKind::Characters;
+            inRoles = true;
             continue;
         }
 
-        if (list != ListKind::None && line.starts_with("- ")) {
-            const std::string item = unquote(trim(line.substr(2)));
-            if (list == ListKind::Roles) {
-                auto role = roleFromKey(item);
+        if (inRoles) {
+            if (line.starts_with("- ")) {
+                const std::string key = trim(line.substr(2));
+                auto role = roleFromKey(key);
                 if (!role) {
                     throw YamlError("строка " + std::to_string(lineNo) +
-                                    ": неизвестная роль \"" + item + "\"");
+                                    ": неизвестная роль \"" + key + "\"");
                 }
                 if (*role != Role::Civilian && *role != Role::Mafia) {
                     result.roles.push_back(*role);
                 }
-            } else {
-                if (!item.empty()) result.characters.push_back(item);
+                continue;
             }
-            continue;
-        }
-
-        if (list != ListKind::None && !line.starts_with("- ")) {
-            list = ListKind::None;
+            // новый ключ верхнего уровня — выходим из списка
+            inRoles = false;
         }
 
         const auto colon = line.find(':');
@@ -93,11 +75,10 @@ RolesFile parseRolesYaml(const std::string& text) {
                 throw YamlError("mafia_divisor должен быть >= 3");
             }
         } else if (key == "roles") {
-            list = ListKind::Roles;
-        } else if (key == "characters") {
-            list = ListKind::Characters;
+            inRoles = true;
+        } else {
+            // неизвестные ключи игнорируем
         }
-        // прочие ключи игнорируем
     }
     return result;
 }
@@ -116,15 +97,6 @@ std::vector<Role> specialRolesFor(Config& config) {
     if (file.mafiaDivisor >= 3) config.mafiaDivisor = file.mafiaDivisor;
     if (file.roles.empty()) return defaultSpecialRoles();
     return file.roles;
-}
-
-std::vector<std::string> charactersFor(const Config& config) {
-    if (config.rolesConfig.empty()) return {};
-    try {
-        return loadRolesYamlFile(config.rolesConfig).characters;
-    } catch (const YamlError&) {
-        return {};
-    }
 }
 
 }  // namespace mafia

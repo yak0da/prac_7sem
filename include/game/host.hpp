@@ -7,7 +7,6 @@
 #include <optional>
 #include <vector>
 
-#include "ai_client.hpp"
 #include "brain.hpp"
 #include "config.hpp"
 #include "engine.hpp"
@@ -26,7 +25,6 @@ struct GameOutcome {
     bool finished = false;
     smart::SharedPtr<GameState> state;
     std::filesystem::path logDirectory;  // пусто, если файловые логи выключены
-    std::filesystem::path aiTranscriptPath;  // ai_dialogs.jsonl, если были AI-запросы
 };
 
 // Ведущий: точка синхронизации, цикл дня/ночи, объявления, проверка победы.
@@ -34,9 +32,6 @@ class Host {
 public:
     Host(Config config, std::unique_ptr<Engine> engine, Logger logger,
          smart::SharedPtr<Brain> humanBrain = {});
-
-    // Подмена LLM-клиента в тестах (иначе CurlAiClient из env).
-    void setAiClient(std::shared_ptr<AiClient> client) { aiClientOverride_ = std::move(client); }
 
     GameOutcome run();
 
@@ -50,12 +45,8 @@ private:
     std::unique_ptr<Engine> engine_;
     Logger logger_;
     smart::SharedPtr<Brain> humanBrainOverride_;  // для тестов; иначе создаётся HumanBrain на cin
-    std::shared_ptr<AiClient> aiClientOverride_;
     smart::SharedPtr<GameState> state_;
     std::vector<smart::SharedPtr<Player>> players_;
-    std::vector<std::string> publicHistory_;
-    std::shared_ptr<AiBudget> aiBudget_;
-    std::shared_ptr<AiTranscript> aiTranscript_;
     PlayerId previousDoctorHeal_ = kNoPlayer;
     static constexpr int kMaxDays = 100;
 };
