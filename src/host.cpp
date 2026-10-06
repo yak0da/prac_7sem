@@ -90,6 +90,7 @@ GameOutcome Host::run() {
     for (const auto& info : state_->snapshot()) {
         players_.push_back(makePlayer(info, brain, config_.seed));
     }
+    engine_->start(players_);
 
     logger_.info("=== Мафия ===");
     logger_.info("seed=" + std::to_string(config_.seed) + ", игроков=" +
@@ -102,7 +103,10 @@ GameOutcome Host::run() {
         logger_.detail("Полный лог: все голоса, ночные ходы, проверки, доверие.");
     }
 
-    if (auto w = maybeFinish(outcome)) return outcome;
+    if (auto w = maybeFinish(outcome)) {
+        engine_->stop();
+        return outcome;
+    }
 
     for (int day = 1; day <= kMaxDays; ++day) {
         state_->setDay(day);
@@ -186,7 +190,10 @@ GameOutcome Host::run() {
             }
         }
 
-        if (maybeFinish(outcome)) return outcome;
+        if (maybeFinish(outcome)) {
+            engine_->stop();
+            return outcome;
+        }
 
         // Ночь.
         state_->setPhase(Phase::Night);
@@ -314,7 +321,10 @@ GameOutcome Host::run() {
         nightEv.day = day;
         for (auto& p : players_) p->onEvent(nightEv);
 
-        if (maybeFinish(outcome)) return outcome;
+        if (maybeFinish(outcome)) {
+            engine_->stop();
+            return outcome;
+        }
     }
 
     logger_.info("Достигнут лимит дней — досрочный итог.");
@@ -325,6 +335,7 @@ GameOutcome Host::run() {
     outcome.finished = true;
     outcome.daysPlayed = state_->day();
     state_->setPhase(Phase::Finished);
+    engine_->stop();
     return outcome;
 }
 

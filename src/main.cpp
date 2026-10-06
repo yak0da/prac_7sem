@@ -20,8 +20,11 @@ void dumpRoles(const mafia::GameState& state) {
 std::unique_ptr<mafia::Engine> makeEngine(mafia::EngineKind kind) {
     switch (kind) {
         case mafia::EngineKind::Sequential:
-        case mafia::EngineKind::Thread:      // потоки - шаг 7; пока как seq
-        case mafia::EngineKind::Coroutine:   // корутины - шаг 10; пока как seq
+            return std::make_unique<mafia::SequentialEngine>();
+        case mafia::EngineKind::Thread:
+            return std::make_unique<mafia::ThreadEngine>();
+        case mafia::EngineKind::Coroutine:
+            // Корутины - шаг 10; пока последовательный движок.
             return std::make_unique<mafia::SequentialEngine>();
     }
     return std::make_unique<mafia::SequentialEngine>();
@@ -56,13 +59,8 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    // На шаге 5 по умолчанию играем последовательно (даже если в конфиге thread).
-    if (config.engine == mafia::EngineKind::Thread || config.engine == mafia::EngineKind::Coroutine) {
-        // Пока не реализованы - используем seq, но seed и логика те же.
-    }
-
     mafia::Logger logger(config);
-    mafia::Host host(config, makeEngine(mafia::EngineKind::Sequential), logger);
+    mafia::Host host(config, makeEngine(config.engine), logger);
     mafia::GameOutcome outcome = host.run();
 
     if (!outcome.finished) {
