@@ -27,6 +27,7 @@ struct GameView {
     std::map<PlayerId, int> trust;           // своё доверие к другим (-100..100)
     PlayerId previousHeal = kNoPlayer;       // для Доктора
     PlayerId lastAccused = kNoPlayer;        // кого обвинил в обсуждении сегодня
+    std::vector<std::string> history;        // публичные события для AI-промпта
 };
 
 // Высказывание днём: "Игрок X - мафия/мирный".
@@ -39,11 +40,13 @@ struct Statement {
 
 // Ночное решение одного игрока.
 enum class NightKind {
-    Skip,   // нет хода (мирный)
-    Heal,   // Доктор
-    Kill,   // мафия (предложение) или Маньяк
-    Check,  // Комиссар проверяет
-    Shoot,  // Комиссар стреляет
+    Skip,     // нет хода (мирный)
+    Heal,     // Доктор
+    Kill,     // мафия / Ниндзя (предложение) или Маньяк
+    Check,    // Комиссар проверяет
+    Shoot,    // Комиссар стреляет
+    Protect,  // Телохранитель защищает
+    Watch,    // Свидетель следит
 };
 
 struct PlayerNightDecision {

@@ -198,6 +198,7 @@ PlayerNightDecision BotBrain::act(const GameView& view, std::mt19937& rng) {
         }
 
         case Role::Mafia:
+        case Role::Ninja:
             d.kind = NightKind::Kill;
             d.target = pickFrom(list.empty() ? others : list, rng);
             break;
@@ -205,6 +206,31 @@ PlayerNightDecision BotBrain::act(const GameView& view, std::mt19937& rng) {
         case Role::Maniac:
             d.kind = NightKind::Kill;
             d.target = pickFrom(others, rng);
+            break;
+
+        case Role::Bodyguard: {
+            d.kind = NightKind::Protect;
+            // Защищаем наиболее доверенного (или себя с вероятностью 1/3).
+            std::vector<PlayerId> candidates = others;
+            candidates.push_back(view.self);
+            std::ranges::sort(candidates, [&](PlayerId a, PlayerId b) {
+                const int ta = view.trust.contains(a) ? view.trust.at(a) : 0;
+                const int tb = view.trust.contains(b) ? view.trust.at(b) : 0;
+                if (ta != tb) return ta > tb;
+                return a < b;
+            });
+            if (!candidates.empty() && std::uniform_int_distribution<int>(0, 2)(rng) == 0) {
+                d.target = view.self;
+            } else {
+                d.target = pickFrom(candidates, rng);
+                if (d.target == kNoPlayer && !candidates.empty()) d.target = candidates.front();
+            }
+            break;
+        }
+
+        case Role::Witness:
+            d.kind = NightKind::Watch;
+            d.target = pickFrom(list.empty() ? others : list, rng);
             break;
     }
     return d;
@@ -338,17 +364,41 @@ PlayerNightDecision HumanBrain::act(const GameView& view, std::mt19937& rng) {
             return PlayerNightDecision{*choice == 2 ? NightKind::Shoot : NightKind::Check, *target};
         }
         case Role::Mafia:
+        case Role::Ninja:
         case Role::Maniac: {
-            *out_ << (view.myRole == Role::Mafia ? "Кого предложить убить?\n" : "Кого убить?\n");
+            *out_ << (view.myRole == Role::Maniac ? "Кого убить?\n" : "Кого предложить убить?\n");
             printAlive(view, false);
             *out_ << "Номер: " << std::flush;
-            // мафия не должна целиться в союзников — подсказываем, но не запрещаем жёстко
             auto target = readPlayerId(others);
             if (!target) {
                 *out_ << "(некорректный ввод — ход сделает бот)\n";
                 return fallback_.act(view, rng);
             }
             return PlayerNightDecision{NightKind::Kill, *target};
+        }
+        case Role::Bodyguard: {
+            *out_ << "Кого защищать этой ночью? Можно себя.\n";
+            printAlive(view, true);
+            *out_ << "Номер: " << std::flush;
+            std::vector<PlayerId> allowed = others;
+            allowed.push_back(view.self);
+            auto target = readPlayerId(allowed);
+            if (!target) {
+                *out_ << "(некорректный ввод — ход сделает бот)\n";
+                return fallback_.act(view, rng);
+            }
+            return PlayerNightDecision{NightKind::Protect, *target};
+        }
+        case Role::Witness: {
+            *out_ << "За кем следить этой ночью?\n";
+            printAlive(view, false);
+            *out_ << "Номер: " << std::flush;
+            auto target = readPlayerId(others);
+            if (!target) {
+                *out_ << "(некорректный ввод — ход сделает бот)\n";
+                return fallback_.act(view, rng);
+            }
+            return PlayerNightDecision{NightKind::Watch, *target};
         }
         case Role::Civilian:
             break;

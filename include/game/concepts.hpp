@@ -57,12 +57,18 @@ inline void assertRoleConcepts() {
     static_assert(PlayerLike<Commissar>);
     static_assert(PlayerLike<Doctor>);
     static_assert(PlayerLike<Maniac>);
+    static_assert(PlayerLike<Ninja>);
+    static_assert(PlayerLike<Bodyguard>);
+    static_assert(PlayerLike<Witness>);
 
     static_assert(NightActor<Civilian>);
     static_assert(NightActor<MafiaPlayer>);
     static_assert(NightActor<Commissar>);
     static_assert(NightActor<Doctor>);
     static_assert(NightActor<Maniac>);
+    static_assert(NightActor<Ninja>);
+    static_assert(NightActor<Bodyguard>);
+    static_assert(NightActor<Witness>);
 
     static_assert(Healer<Doctor>);
     static_assert(Investigator<Commissar>);

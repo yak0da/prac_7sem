@@ -4,17 +4,25 @@ namespace mafia {
 
 Team teamOf(Role role) {
     switch (role) {
-        case Role::Mafia: return Team::Mafia;
+        case Role::Mafia:
+        case Role::Ninja: return Team::Mafia;
         case Role::Maniac: return Team::Maniac;
         case Role::Civilian:
         case Role::Commissar:
-        case Role::Doctor: return Team::Town;
+        case Role::Doctor:
+        case Role::Bodyguard:
+        case Role::Witness: return Team::Town;
     }
     return Team::Town;
 }
 
 Team seenByCommissar(Role role) {
-    return role == Role::Maniac ? Team::Town : teamOf(role);
+    if (role == Role::Maniac || role == Role::Ninja) return Team::Town;
+    return teamOf(role);
+}
+
+bool isMafiaRole(Role role) {
+    return teamOf(role) == Team::Mafia;
 }
 
 std::string roleName(Role role) {
@@ -24,6 +32,9 @@ std::string roleName(Role role) {
         case Role::Commissar: return "Комиссар";
         case Role::Doctor: return "Доктор";
         case Role::Maniac: return "Маньяк";
+        case Role::Ninja: return "Ниндзя";
+        case Role::Bodyguard: return "Телохранитель";
+        case Role::Witness: return "Свидетель";
     }
     return "?";
 }
@@ -47,6 +58,9 @@ std::optional<Role> roleFromKey(std::string_view key) {
     if (key == "commissar") return Role::Commissar;
     if (key == "doctor") return Role::Doctor;
     if (key == "maniac") return Role::Maniac;
+    if (key == "ninja") return Role::Ninja;
+    if (key == "bodyguard") return Role::Bodyguard;
+    if (key == "witness") return Role::Witness;
     return std::nullopt;
 }
 

@@ -82,6 +82,12 @@ smart::SharedPtr<Player> makePlayer(const PlayerInfo& info, smart::SharedPtr<Bra
             return smart::makeShared<Doctor>(info.id, info.name, info.role, brain, seed);
         case Role::Maniac:
             return smart::makeShared<Maniac>(info.id, info.name, info.role, brain, seed);
+        case Role::Ninja:
+            return smart::makeShared<Ninja>(info.id, info.name, info.role, brain, seed);
+        case Role::Bodyguard:
+            return smart::makeShared<Bodyguard>(info.id, info.name, info.role, brain, seed);
+        case Role::Witness:
+            return smart::makeShared<Witness>(info.id, info.name, info.role, brain, seed);
     }
     return smart::makeShared<Civilian>(info.id, info.name, info.role, brain, seed);
 }

@@ -42,6 +42,8 @@ std::string Logger::nightKindName(NightKind kind) {
         case NightKind::Kill: return "убийство";
         case NightKind::Check: return "проверка";
         case NightKind::Shoot: return "выстрел";
+        case NightKind::Protect: return "защита";
+        case NightKind::Watch: return "слежка";
     }
     return "?";
 }

@@ -94,9 +94,23 @@ int mafiaCount(int players, int divisor) {
 
 std::vector<Role> assignRoles(int players, int divisor, const std::vector<Role>& specials,
                               std::mt19937& rng) {
-    int mafia = mafiaCount(players, divisor);
-    std::vector<Role> roles(static_cast<std::size_t>(mafia), Role::Mafia);
+    const int mafiaSlots = mafiaCount(players, divisor);
+
+    // Ниндзя входит в квоту мафии; остальные specials — отдельно.
+    std::vector<Role> mafiaExtras;
+    std::vector<Role> otherSpecials;
     for (Role special : specials) {
+        if (special == Role::Ninja) mafiaExtras.push_back(special);
+        else if (special != Role::Civilian && special != Role::Mafia) otherSpecials.push_back(special);
+    }
+
+    std::vector<Role> roles;
+    roles.reserve(static_cast<std::size_t>(players));
+    for (int i = 0; i < mafiaSlots; ++i) {
+        if (i < static_cast<int>(mafiaExtras.size())) roles.push_back(mafiaExtras[static_cast<std::size_t>(i)]);
+        else roles.push_back(Role::Mafia);
+    }
+    for (Role special : otherSpecials) {
         if (static_cast<int>(roles.size()) == players) break;
         roles.push_back(special);
     }

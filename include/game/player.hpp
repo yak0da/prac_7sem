@@ -92,6 +92,21 @@ public:
     using Player::Player;
 };
 
+class Ninja final : public Player {
+public:
+    using Player::Player;
+};
+
+class Bodyguard final : public Player {
+public:
+    using Player::Player;
+};
+
+class Witness final : public Player {
+public:
+    using Player::Player;
+};
+
 // Создать игрока нужного класса по роли.
 smart::SharedPtr<Player> makePlayer(const PlayerInfo& info, smart::SharedPtr<Brain> brain,
                                     std::uint32_t seed);

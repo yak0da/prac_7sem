@@ -9,49 +9,54 @@
 
 namespace mafia {
 
-// Один голос на дневном голосовании.
 struct Vote {
     PlayerId voter = kNoPlayer;
     PlayerId target = kNoPlayer;
 };
 
-// Ночные действия, собранные ведущим за одну ночь.
 struct NightActions {
-    PlayerId doctorHeal = kNoPlayer;           // кого лечит Доктор
-    PlayerId previousDoctorHeal = kNoPlayer;   // кого лечил прошлой ночью (нельзя повторить)
-    PlayerId mafiaTarget = kNoPlayer;          // жертва мафии
-    PlayerId maniacTarget = kNoPlayer;         // жертва Маньяка
-    PlayerId commissarTarget = kNoPlayer;      // цель Комиссара
-    bool commissarShoots = false;              // true - стреляет, false - проверяет
+    PlayerId doctorHeal = kNoPlayer;
+    PlayerId previousDoctorHeal = kNoPlayer;
+    PlayerId mafiaTarget = kNoPlayer;
+    PlayerId mafiaShooter = kNoPlayer;       // Босс / исполнитель (для контрудара Телохранителя)
+    PlayerId maniacTarget = kNoPlayer;
+    PlayerId commissarTarget = kNoPlayer;
+    bool commissarShoots = false;
+    PlayerId bodyguardProtect = kNoPlayer;   // кого защищает Телохранитель
+    PlayerId bodyguardId = kNoPlayer;        // кто телохранитель
+    PlayerId witnessWatch = kNoPlayer;       // за кем следит Свидетель
+    PlayerId witnessId = kNoPlayer;
 };
 
-// Смерть за ночь (результат, не изменение состояния).
 struct DeathRecord {
     PlayerId victim = kNoPlayer;
-    std::string cause;  // "убит мафией", "убит маньяком", "убит комиссаром"
+    std::string cause;
 };
 
-// Результат разрешения ночи: кого спасли, кого убили, что узнал Комиссар.
+// Личный отчёт Свидетелю о покушении.
+struct WitnessReport {
+    PlayerId witness = kNoPlayer;
+    PlayerId watched = kNoPlayer;
+    PlayerId attacker = kNoPlayer;
+    std::string action;  // "убийство мафии" / "выстрел комиссара" / ...
+};
+
 struct NightResult {
-    PlayerId healed = kNoPlayer;                      // кого реально защитил Доктор
-    bool healRejected = false;                        // Доктор пытался лечить того же, что и вчера
-    std::vector<DeathRecord> deaths;                  // погибшие за ночь
-    std::vector<PlayerId> savedTargets;               // в кого стреляли, но Доктор спас
-    PlayerId commissarChecked = kNoPlayer;            // кого проверил Комиссар
-    std::optional<Team> commissarSeenTeam;            // что увидел (для Маньяка - мирные)
+    PlayerId healed = kNoPlayer;
+    bool healRejected = false;
+    std::vector<DeathRecord> deaths;
+    std::vector<PlayerId> savedTargets;
+    PlayerId commissarChecked = kNoPlayer;
+    std::optional<Team> commissarSeenTeam;
+    PlayerId bodyguardSaved = kNoPlayer;
+    PlayerId bodyguardKilled = kNoPlayer;  // кого контрубил Телохранитель
+    std::vector<WitnessReport> witnessReports;
 };
 
-// Подсчет голосов. При ничьей (равное большинство) - никто не выбывает.
 std::optional<PlayerId> countVotes(const std::vector<Vote>& votes);
-
-// Разрешение ночи: лечение, убийства мафии/Маньяка/Комиссара, проверка Комиссара.
-// Не меняет состояние - только возвращает результат. Работает по снимку игроков.
 NightResult resolveNight(const std::vector<PlayerInfo>& players, const NightActions& actions);
-
-// Условие победы по живым игрокам. Пусто, если игра продолжается.
 std::optional<Team> checkWinner(const std::vector<PlayerInfo>& players);
 
-// Сколько живых игроков каждой команды (через ranges).
 struct TeamCounts {
     int town = 0;
     int mafia = 0;
