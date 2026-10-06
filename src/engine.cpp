@@ -1,5 +1,7 @@
 #include <game/engine.hpp>
 
+#include <algorithm>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 
@@ -120,6 +122,106 @@ PlayerNightDecision ThreadEngine::askAct(Player& player, const GameView& view) {
     return ask<PlayerNightDecision>(
         player, view, [](Slot& s) { s.request = RequestKind::Act; },
         [](Slot& s) { return s.actResult; });
+}
+
+void CoroEngine::start(const std::vector<smart::SharedPtr<Player>>& players) {
+    stop();
+    running_ = true;
+    for (const auto& player : players) {
+        auto slot = smart::makeShared<Slot>();
+        slot->player = player;
+        const PlayerId id = player->id();
+        // Создаём корутину; initial_suspend — сразу спит, пока не запланируем.
+        slot->task = playerLoop(slot, &scheduler_);
+        slots_.emplace(id, slot);
+        scheduler_.schedule(slot->task.handle());
+    }
+    // Доводим все корутины до первого co_await WaitRequest.
+    scheduler_.runUntil([this] {
+        return std::ranges::all_of(slots_, [](const auto& item) { return item.second->hasWaiting; });
+    });
+}
+
+void CoroEngine::stop() {
+    if (!running_ && slots_.empty()) return;
+    for (auto& [_, slot] : slots_) {
+        slot->request = RequestKind::Stop;
+        slot->responseReady = false;
+        if (slot->hasWaiting) {
+            slot->hasWaiting = false;
+            scheduler_.schedule(slot->waiting);
+        }
+    }
+    scheduler_.runUntil([this] {
+        return std::ranges::all_of(slots_, [](const auto& item) {
+            return !item.second->task.handle() || item.second->task.handle().done();
+        });
+    });
+    for (auto& [_, slot] : slots_) slot->task.rethrowIfNeeded();
+    slots_.clear();
+    running_ = false;
+}
+
+CoroEngine::Slot& CoroEngine::slotFor(PlayerId id) {
+    auto it = slots_.find(id);
+    if (it == slots_.end()) {
+        throw std::runtime_error("CoroEngine: нет слота для игрока " + std::to_string(id));
+    }
+    return *it->second;
+}
+
+Task CoroEngine::playerLoop(smart::SharedPtr<Slot> slot, Scheduler* scheduler) {
+    while (true) {
+        const RequestKind kind = co_await WaitRequest{slot.get(), scheduler};
+        if (kind == RequestKind::Stop) co_return;
+
+        switch (kind) {
+            case RequestKind::Speak:
+                slot->speakResult = slot->player->speak(slot->view);
+                break;
+            case RequestKind::Vote:
+                slot->voteResult = slot->player->vote(slot->view);
+                break;
+            case RequestKind::Act:
+                slot->actResult = slot->player->act(slot->view);
+                break;
+            case RequestKind::None:
+            case RequestKind::Stop:
+                break;
+        }
+        slot->request = RequestKind::None;
+        slot->responseReady = true;
+    }
+}
+
+template <class Result, class GetResult>
+Result CoroEngine::ask(Player& player, const GameView& view, RequestKind kind, GetResult getResult) {
+    Slot& slot = slotFor(player.id());
+    if (!slot.hasWaiting) {
+        throw std::runtime_error("CoroEngine: корутина игрока не ждёт запрос");
+    }
+    slot.view = view;
+    slot.request = kind;
+    slot.responseReady = false;
+    slot.hasWaiting = false;
+    scheduler_.schedule(slot.waiting);
+    scheduler_.runUntil([&] { return slot.responseReady; });
+    slot.task.rethrowIfNeeded();
+    return getResult(slot);
+}
+
+Statement CoroEngine::askSpeak(Player& player, const GameView& view) {
+    return ask<Statement>(player, view, RequestKind::Speak,
+                          [](Slot& s) { return s.speakResult; });
+}
+
+PlayerId CoroEngine::askVote(Player& player, const GameView& view) {
+    return ask<PlayerId>(player, view, RequestKind::Vote, [](Slot& s) { return s.voteResult; });
+}
+
+PlayerNightDecision CoroEngine::askAct(Player& player, const GameView& view) {
+    return ask<PlayerNightDecision>(player, view, RequestKind::Act,
+                                    [](Slot& s) { return s.actResult; });
 }
 
 }  // namespace mafia

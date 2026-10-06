@@ -30,10 +30,11 @@ std::optional<PlayerId> countVotes(const std::vector<Vote>& votes) {
     if (tallies.empty()) return std::nullopt;
 
     const int maxVotes = std::ranges::max(tallies | std::views::values);
-    std::vector<PlayerId> leaders;
-    for (const auto& [id, count] : tallies) {
-        if (count == maxVotes) leaders.push_back(id);
-    }
+    auto leadersView = tallies | std::views::filter([maxVotes](const auto& entry) {
+                           return entry.second == maxVotes;
+                       }) |
+                       std::views::keys;
+    std::vector<PlayerId> leaders{leadersView.begin(), leadersView.end()};
 
     // Ничья: никто не выбывает.
     if (leaders.size() != 1) return std::nullopt;

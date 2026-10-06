@@ -171,9 +171,8 @@ GameOutcome Host::run() {
         dayStart.message = "--- День " + std::to_string(day) + " ---";
         broadcast(dayStart);
 
-        // Дневное обсуждение (через концепт PlayerLike).
-        for (auto& p : players_) {
-            if (!p->alive()) continue;
+        // Дневное обсуждение (через концепт PlayerLike + ranges).
+        for (auto& p : players_ | std::views::filter([](const auto& pl) { return pl->alive(); })) {
             Statement s = runDaySpeak(*engine_, *p, buildView(*p));
             s.speaker = p->id();
             p->setLastAccused(s.about);
@@ -190,11 +189,10 @@ GameOutcome Host::run() {
                            std::to_string(p->trustOf(s.about)));
         }
 
-        // Голосование (через концепт PlayerLike).
+        // Голосование (через концепт PlayerLike + ranges).
         logger_.info("Голосование:");
         std::vector<Vote> votes;
-        for (auto& p : players_) {
-            if (!p->alive()) continue;
+        for (auto& p : players_ | std::views::filter([](const auto& pl) { return pl->alive(); })) {
             PlayerId target = runDayVote(*engine_, *p, buildView(*p));
             if (target == p->id() || target == kNoPlayer || !state_->isAlive(target)) {
                 auto alive = state_->aliveIds();

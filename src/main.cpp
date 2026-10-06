@@ -24,8 +24,7 @@ std::unique_ptr<mafia::Engine> makeEngine(mafia::EngineKind kind) {
         case mafia::EngineKind::Thread:
             return std::make_unique<mafia::ThreadEngine>();
         case mafia::EngineKind::Coroutine:
-            // Корутины - шаг 10; пока последовательный движок.
-            return std::make_unique<mafia::SequentialEngine>();
+            return std::make_unique<mafia::CoroEngine>();
     }
     return std::make_unique<mafia::SequentialEngine>();
 }
