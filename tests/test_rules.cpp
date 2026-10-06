@@ -189,6 +189,16 @@ TEST(rules_maniac_wins_one_on_one_with_town) {
     CHECK(*w == Team::Maniac);
 }
 
+TEST(rules_maniac_wins_alone) {
+    std::vector<PlayerInfo> players{
+        makePlayer(1, Role::Maniac),
+        makePlayer(2, Role::Civilian, false),
+    };
+    auto w = checkWinner(players);
+    CHECK(w.has_value());
+    CHECK(*w == Team::Maniac);
+}
+
 TEST(rules_maniac_vs_mafia_continues) {
     std::vector<PlayerInfo> players{
         makePlayer(1, Role::Maniac),

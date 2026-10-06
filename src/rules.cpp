@@ -125,7 +125,8 @@ std::optional<Team> checkWinner(const std::vector<PlayerInfo>& players) {
     // Мирные: нет ни мафии, ни Маньяка.
     if (c.mafia == 0 && c.maniac == 0) return Team::Town;
 
-    // Маньяк: один на один с мирным (ровно двое живых, один из них - Маньяк, второй - мирный).
+    // Маньяк: один на один с мирным, либо остался один.
+    if (c.maniac == 1 && c.alive == 1) return Team::Maniac;
     if (c.maniac == 1 && c.alive == 2 && c.town == 1) return Team::Maniac;
 
     // Мафия: численное преимущество или равенство с остальными,
