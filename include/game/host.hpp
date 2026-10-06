@@ -6,6 +6,7 @@
 #include <optional>
 #include <vector>
 
+#include "brain.hpp"
 #include "config.hpp"
 #include "engine.hpp"
 #include "logger.hpp"
@@ -26,7 +27,8 @@ struct GameOutcome {
 // Ведущий: точка синхронизации, цикл дня/ночи, объявления, проверка победы.
 class Host {
 public:
-    Host(Config config, std::unique_ptr<Engine> engine, Logger logger);
+    Host(Config config, std::unique_ptr<Engine> engine, Logger logger,
+         smart::SharedPtr<Brain> humanBrain = {});
 
     GameOutcome run();
 
@@ -39,6 +41,7 @@ private:
     Config config_;
     std::unique_ptr<Engine> engine_;
     Logger logger_;
+    smart::SharedPtr<Brain> humanBrainOverride_;  // для тестов; иначе создаётся HumanBrain на cin
     smart::SharedPtr<GameState> state_;
     std::vector<smart::SharedPtr<Player>> players_;
     PlayerId previousDoctorHeal_ = kNoPlayer;

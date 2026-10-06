@@ -10,8 +10,12 @@
 
 namespace mafia {
 
-Host::Host(Config config, std::unique_ptr<Engine> engine, Logger logger)
-    : config_(std::move(config)), engine_(std::move(engine)), logger_(std::move(logger)) {}
+Host::Host(Config config, std::unique_ptr<Engine> engine, Logger logger,
+           smart::SharedPtr<Brain> humanBrain)
+    : config_(std::move(config)),
+      engine_(std::move(engine)),
+      logger_(std::move(logger)),
+      humanBrainOverride_(std::move(humanBrain)) {}
 
 GameView Host::buildView(const Player& player) const {
     GameView view;
@@ -85,9 +89,12 @@ GameOutcome Host::run() {
     state_ = createGameState(config_, defaultSpecialRoles(), dealRng);
     outcome.state = state_;
 
-    auto brain = smart::makeShared<BotBrain>();
+    auto botBrain = smart::makeShared<BotBrain>();
+    smart::SharedPtr<Brain> humanBrain =
+        humanBrainOverride_ ? humanBrainOverride_ : smart::makeShared<HumanBrain>();
     players_.clear();
     for (const auto& info : state_->snapshot()) {
+        auto brain = (config_.interactive && info.human) ? humanBrain : botBrain;
         players_.push_back(makePlayer(info, brain, config_.seed));
     }
     engine_->start(players_);
@@ -98,9 +105,30 @@ GameOutcome Host::run() {
                  std::to_string(mafiaCount(config_.players, config_.mafiaDivisor)) +
                  ", объявления=" +
                  std::string(config_.openAnnouncements ? "открытые" : "закрытые") +
-                 ", engine=" + engineName(config_.engine));
+                 ", engine=" + engineName(config_.engine) +
+                 (config_.interactive ? ", режим=интерактивный (вы — Игрок1)" : ""));
     if (config_.fullLog) {
         logger_.detail("Полный лог: все голоса, ночные ходы, проверки, доверие.");
+    }
+
+    if (config_.interactive) {
+        for (const auto& p : players_) {
+            if (!p->id() || !state_->player(p->id()).human) continue;
+            std::ostringstream intro;
+            intro << "\n*** Лично вам ***\nВы — " << p->name() << ". Ваша роль: " << roleName(p->role())
+                  << " [" << teamName(teamOf(p->role())) << "].\n";
+            if (p->role() == Role::Mafia) {
+                intro << "Сообщники:";
+                for (const auto& other : state_->snapshot()) {
+                    if (other.role == Role::Mafia && other.id != p->id()) {
+                        intro << " " << other.name;
+                    }
+                }
+                intro << "\n";
+            }
+            intro << "Ведущий будет подсказывать фазу и что ввести (номер игрока).\n";
+            logger_.info(intro.str());
+        }
     }
 
     if (auto w = maybeFinish(outcome)) {
@@ -307,6 +335,12 @@ GameOutcome Host::run() {
                     p->rememberCheck(night.commissarChecked, *night.commissarSeenTeam);
                     logger_.detail("Комиссар проверил " + state_->name(night.commissarChecked) +
                                    ": " + teamName(*night.commissarSeenTeam));
+                    // Результат проверки видит только Комиссар (лично), не вся комната.
+                    if (config_.interactive && state_->player(p->id()).human) {
+                        logger_.info("*** Лично вам (Комиссар) *** Проверка " +
+                                     state_->name(night.commissarChecked) + ": " +
+                                     teamName(*night.commissarSeenTeam) + ".");
+                    }
                 }
             }
         }
